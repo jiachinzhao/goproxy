@@ -2,19 +2,22 @@ package services
 
 import (
 	"fmt"
+	"github.com/snail007/goproxy/utils"
 	"io"
 	"log"
 	"net"
-	"github.com/snail007/goproxy/utils"
 	"runtime/debug"
 	"strconv"
+	"strings"
 )
 
 type HTTP struct {
-	outPool   utils.OutPool
-	cfg       HTTPArgs
-	checker   utils.Checker
-	basicAuth utils.BasicAuth
+	outPool     utils.OutPool
+	outPool2    utils.OutPool
+	cfg         HTTPArgs
+	checker     utils.Checker
+	basicAuth   utils.BasicAuth
+	hostsProxy2 []string
 }
 
 func NewHTTP() Service {
@@ -24,6 +27,15 @@ func NewHTTP() Service {
 		checker:   utils.Checker{},
 		basicAuth: utils.BasicAuth{},
 	}
+}
+
+func (s *HTTP) getProxyWay(address string) bool {
+	for _, v := range s.hostsProxy2 {
+		if strings.Contains(address, v) {
+			return true
+		}
+	}
+	return false
 }
 func (s *HTTP) InitService() {
 	s.InitBasicAuth()
@@ -35,6 +47,9 @@ func (s *HTTP) StopService() {
 	if s.outPool.Pool != nil {
 		s.outPool.Pool.ReleaseAll()
 	}
+	if s.outPool2.Pool != nil {
+		s.outPool2.Pool.ReleaseAll()
+	}
 }
 func (s *HTTP) Start(args interface{}) (err error) {
 	s.cfg = args.(HTTPArgs)
@@ -42,6 +57,15 @@ func (s *HTTP) Start(args interface{}) (err error) {
 		log.Printf("use %s parent %s", *s.cfg.ParentType, *s.cfg.Parent)
 		s.InitOutConnPool()
 	}
+
+	if *s.cfg.Parent2 != "" {
+		log.Printf("use %s parent2 %s", *s.cfg.ParentType, *s.cfg.Parent2)
+		s.InitOutConnPool2()
+	}
+
+	s.hostsProxy2 = strings.Split(*s.cfg.HostsProxy2, ",")
+
+	log.Printf("hostsProxy2: %+v\n", s.hostsProxy2)
 
 	s.InitService()
 
@@ -94,7 +118,8 @@ func (s *HTTP) callback(inConn net.Conn) {
 		useProxy, _, _ = s.checker.IsBlocked(req.Host)
 		//log.Printf("blocked ? : %v, %s , fail:%d ,success:%d", useProxy, address, n, m)
 	}
-	log.Printf("use proxy : %v, %s", useProxy, address)
+	useProxy = true
+	log.Printf("use proxy : %v, %s, parent: %s", useProxy, address, *s.cfg.Parent)
 	//os.Exit(0)
 	err = s.OutToTCP(useProxy, address, &inConn, &req)
 	if err != nil {
@@ -117,16 +142,24 @@ func (s *HTTP) OutToTCP(useProxy bool, address string, inConn *net.Conn, req *ut
 	}
 	var outConn net.Conn
 	var _outConn interface{}
+	var parent string
 	if useProxy {
-		_outConn, err = s.outPool.Pool.Get()
+		if s.getProxyWay(address) {
+			parent = *s.cfg.Parent2
+			_outConn, err = s.outPool2.Pool.Get()
+		} else {
+			parent = *s.cfg.Parent
+			_outConn, err = s.outPool.Pool.Get()
+		}
 		if err == nil {
 			outConn = _outConn.(net.Conn)
 		}
 	} else {
+		parent = "direct "
 		outConn, err = utils.ConnectHost(address, *s.cfg.Timeout)
 	}
 	if err != nil {
-		log.Printf("connect to %s , err:%s", *s.cfg.Parent, err)
+		log.Printf("connect to %s , err:%s", parent, err)
 		utils.CloseConn(inConn)
 		return
 	}
@@ -159,6 +192,21 @@ func (s *HTTP) InitOutConnPool() {
 			*s.cfg.ParentType == TYPE_TLS,
 			s.cfg.CertBytes, s.cfg.KeyBytes,
 			*s.cfg.Parent,
+			*s.cfg.Timeout,
+			*s.cfg.PoolSize,
+			*s.cfg.PoolSize*2,
+		)
+	}
+}
+func (s *HTTP) InitOutConnPool2() {
+	if *s.cfg.ParentType == TYPE_TLS || *s.cfg.ParentType == TYPE_TCP {
+		//dur int, isTLS bool, certBytes, keyBytes []byte,
+		//parent string, timeout int, InitialCap int, MaxCap int
+		s.outPool2 = utils.NewOutPool(
+			*s.cfg.CheckParentInterval,
+			*s.cfg.ParentType == TYPE_TLS,
+			s.cfg.CertBytes, s.cfg.KeyBytes,
+			*s.cfg.Parent2,
 			*s.cfg.Timeout,
 			*s.cfg.PoolSize,
 			*s.cfg.PoolSize*2,

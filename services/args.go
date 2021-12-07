@@ -16,6 +16,7 @@ const (
 type Args struct {
 	Local     *string
 	Parent    *string
+	Parent2   *string
 	CertBytes []byte
 	KeyBytes  []byte
 }
@@ -58,6 +59,7 @@ type HTTPArgs struct {
 	Timeout             *int
 	PoolSize            *int
 	CheckParentInterval *int
+	HostsProxy2         *string
 }
 type UDPArgs struct {
 	Args

@@ -2,11 +2,11 @@ package main
 
 import (
 	"fmt"
+	"github.com/snail007/goproxy/services"
+	"github.com/snail007/goproxy/utils"
 	"io/ioutil"
 	"log"
 	"os"
-	"github.com/snail007/goproxy/services"
-	"github.com/snail007/goproxy/utils"
 
 	kingpin "gopkg.in/alecthomas/kingpin.v2"
 )
@@ -37,6 +37,7 @@ func initConfig() (err error) {
 	app = kingpin.New("proxy", "happy with proxy")
 	app.Author("snail").Version(APP_VERSION)
 	args.Parent = app.Flag("parent", "parent address, such as: \"23.32.32.19:28008\"").Default("").Short('P').String()
+	args.Parent2 = app.Flag("parent2", "parent address, such as: \"23.32.32.19:28008\"").Default("").String()
 	args.Local = app.Flag("local", "local ip:port to listen").Short('p').Default(":33080").String()
 	certTLS := app.Flag("cert", "cert file for tls").Short('C').Default("proxy.crt").String()
 	keyTLS := app.Flag("key", "key file for tls").Short('K').Default("proxy.key").String()
@@ -55,6 +56,7 @@ func initConfig() (err error) {
 	httpArgs.Auth = http.Flag("auth", "http basic auth username and password, mutiple user repeat -a ,such as: -a user1:pass1 -a user2:pass2").Short('a').Strings()
 	httpArgs.PoolSize = http.Flag("pool-size", "conn pool size , which connect to parent proxy, zero: means turn off pool").Short('L').Default("20").Int()
 	httpArgs.CheckParentInterval = http.Flag("check-parent-interval", "check if proxy is okay every interval seconds,zero: means no check").Short('I').Default("3").Int()
+	httpArgs.HostsProxy2 = http.Flag("proxy2-hosts", "host proxy2 list split by ,").Default("").String()
 
 	//########tcp#########
 	tcp := app.Command("tcp", "proxy on tcp mode")
@@ -90,7 +92,7 @@ func initConfig() (err error) {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
 	if *certTLS != "" && *keyTLS != "" {
-		args.CertBytes, args.KeyBytes = tlsBytes(*certTLS, *keyTLS)
+		//args.CertBytes, args.KeyBytes = tlsBytes(*certTLS, *keyTLS)
 	}
 
 	//common args
